@@ -1,0 +1,89 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+
+  docker:
+    name: Build and Cache Docker Image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image to GHCR
+        uses: docker/build-push-action@v6
+        with:
+          context: "{{ defaultContext }}:docker"
+          tags: ghcr.io/${{ github.repository }}:latest
+          push: true
+
+  build:
+    name: Build on ${{ matrix.dist }}-${{ matrix.arch }}
+    needs: docker
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dist: [el8, el9]
+        arch: [x86_64, aarch64]
+    outputs:
+      artifact-names: ${{ steps.set-artifact.outputs.names }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run build script
+        run: |
+          docker pull ghcr.io/${{ github.repository }}:latest
+          IMAGE=ghcr.io/${{ github.repository }}:latest bash ./apptainer-build-unprivileged.sh -d "${{ matrix.dist }}" -a "${{ matrix.arch }}" -v "$(echo ${{ github.ref_name }} | tr -d v)"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-package-${{ matrix.dist }}-${{ matrix.arch }}
+          path: work/*.tar.gz
+
+  upload:
+    name: Upload Artifacts to GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: success()
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: build-package-*
+          path: packages
+
+      - name: Display downloaded files
+        run: ls -R packages
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Apptainer ${{ github.ref_name }}
+          files: packages/**/*.tar.gz
+          fail_on_unmatched_files: true
+          body: |
+            Relocatable unprivileged packages for Apptainer ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
