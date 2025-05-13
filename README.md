@@ -43,6 +43,9 @@ Releases are automatically created and packages are automatically built and uplo
 Apptainer repo tags, e.g. `v1.4.0`. Force pushing a tag will cause a rebuild, but be aware that force pushing an older
 tag will cause out-of-order releases.
 
+You'll need to generate a commit to tag, you can do that by updating the version in [`version.txt`](version.txt). This
+file serves no actual purpose in the build process.
+
 To build locally, run the `apptainer-build-unprivileged.sh` script with the same arguments as `install-unprivileged.sh`,
 excluding the `DEST` positional argument, which is automatically generated under the `work` subdirectory. The `-d`
 option (distribution) is required. Building requires Docker and, if `-v` (version) is not specified, `curl` and `jq`.
